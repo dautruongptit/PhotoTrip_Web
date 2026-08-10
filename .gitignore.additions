@@ -1,0 +1,5 @@
+# Thêm các dòng này vào .gitignore hiện có của PhotoTripManagement
+.env
+.env.*
+!.env.development.example
+!.env.production.example

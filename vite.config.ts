@@ -33,6 +33,11 @@ export default defineConfig(({ mode }) => {
       host: '0.0.0.0',
       port: parseInt(process.env.PORT || '8443'),
       strictPort: true,
+      proxy: {
+        '/api': { target: 'http://localhost:8083', changeOrigin: true },
+        '/oauth2': { target: 'http://localhost:8083', changeOrigin: true },
+        '/login/oauth2': { target: 'http://localhost:8083', changeOrigin: true },
+      },
       watch: { ignored: ['**/.figma/**'] },
     },
     preview: {

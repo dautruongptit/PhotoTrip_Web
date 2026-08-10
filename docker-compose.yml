@@ -1,13 +1,17 @@
+version: '3.9'
 services:
-  # Frontend (React + Nginx)
-  travel-photo:
-    build: .
-    container_name: travel-photo-app
+  frontend:
+    build:
+      context: .
+      args:
+        VITE_API_BASE_URL: /api
+        VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+    container_name: travelPhoto-frontend
     restart: unless-stopped
     ports:
-      - "8081:80"
+      - "8090:80"
     networks:
-      - shared-network  # Dùng chung network với backend đang chạy
+      - shared-network
 
 networks:
   shared-network:
