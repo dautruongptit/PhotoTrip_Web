@@ -1,307 +1,361 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { useNotes } from "./hooks/useNotes";
-import { useRename } from "./hooks/useRename";
-import { useAutoSave } from "./hooks/useAutoSave";
-import { useDriveSync } from "./hooks/useDriveSync";
-import { useSidebarResize } from "./hooks/useSidebarResize";
-import { useSelectMode } from "./hooks/useSelectMode";
-import { useOfflineSync } from "./hooks/useOfflineSync";
-import { useAuth, type AuthStatus } from "./hooks/useAuth";
-import { authApi } from "./api/authApi";
-import { driveApi } from "./api/driveApi";
-import type { NotesMode } from "./api/notesRepo";
-import { migrateLocalNotesToServer } from "./utils/migrateLocalNotes";
-import { DriveCallbackScreen } from "./components/auth/DriveCallbackScreen";
-import { TopBar } from "./components/layout/TopBar";
-import { StatusBar } from "./components/layout/StatusBar";
-import { EditorPane } from "./components/layout/EditorPane";
-import { Sidebar } from "./components/sidebar/Sidebar";
-import { SidebarResizer } from "./components/sidebar/SidebarResizer";
-import { ContextMenu } from "./components/ContextMenu";
-import { DeleteConfirmModal } from "./components/modals/DeleteConfirmModal";
-import { BulkDeleteConfirmModal } from "./components/modals/BulkDeleteConfirmModal";
-import { RenameModal } from "./components/modals/RenameModal";
-import { DrivePanel } from "./components/modals/DrivePanel";
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { AppView, StoragePlan, TravelEvent, ToastItem, Photo, User } from './types';
+import { mockEvents, storagePlans } from './mockData';
+import { generateId, formatTotalSize, FREE_STORAGE_BYTES } from './utils';
+import { useTheme } from './hooks/useTheme';
+import { useHistoryNavigation } from './hooks/useHistoryNavigation';
+import { getToken, setToken, clearToken } from './lib/apiClient';
+import { fetchCurrentUser, logout as apiLogout } from './lib/authApi';
+import { verifyVnpayReturn, readPendingOrder, clearPendingOrder, isMockPaymentMode, type VnpayReturnResult } from './lib/paymentApi';
 
-// SEC-15: BO cong chan cung (khong con "chua dang nhap thi khong cho dung
-// app" nhu SEC-10) - dung theo yeu cau moi: "chi khi nguoi dung DONG BO moi
-// yeu cau dang nhap Google". App gio la LOCAL-FIRST:
-//
-//  - Mo app lan dau (chua dang nhap) -> "Local Mode": note luu HOAN TOAN
-//    trong IndexedDB cua trinh duyet (xem localNotesStore.ts), dung day du
-//    moi tinh nang (tao/sua/xoa/doi ten/duplicate/tai xuong), KHONG can mang,
-//    KHONG can dang nhap.
-//  - Bam nut "Dang nhap & Dong bo" -> dieu huong sang Google (giong SEC-01/06)
-//    -> dang nhap xong quay ve app -> TU DONG day toan bo note dang co trong
-//    Local Mode len server (migrateLocalNotesToServer, tai su dung endpoint
-//    /api/sync/batch da co san tu SEC-05) -> chuyen sang "Server Mode".
-//  - Server Mode: dung CHINH XAC nhu SEC-08/SEC-10 truoc day - note nam tren
-//    backend (MySQL + disk Ubuntu ca nhan), nen mo app tren MAY THU HAI (cung
-//    dang nhap 1 tai khoan) se thay LAI dung phien lam viec, KE CA KHI CHUA
-//    tung ket noi Google Drive rieng (Drive la lop backup KHAC, tach biet -
-//    xem DrivePanel/useDriveSync, khong lien quan gi den viec nay).
+import LoginPage from './components/LoginPage';
+import Header from './components/Header';
+import Dashboard from './components/Dashboard';
+import CreateEventModal from './components/CreateEventModal';
+import AlbumPage from './components/AlbumPage';
+import HelpPage from './components/HelpPage';
+import UploadModal from './components/UploadModal';
+import ProfileModal from './components/ProfileModal';
+import SettingsModal from './components/SettingsModal';
+import UpgradeModal from './components/UpgradeModal';
+import VnpayCheckoutModal from './components/VnpayCheckoutModal';
+import Footer from './components/Footer';
+import Toast from './components/Toast';
+
 export default function App() {
-  // "/drive/callback": backend (DriveController.callback(), SEC-09) redirect
-  // trinh duyet ve day sau khi hoan tat luong ket noi Google Drive (KHAC voi
-  // luong dang nhap thong thuong). Repo khong dung router library nen tu
-  // kiem tra pathname truc tiep - an toan vi App() khong goi hook nao truoc do.
-  if (window.location.pathname === "/drive/callback") {
-    return <DriveCallbackScreen />;
-  }
-  return <AuthGate />;
-}
+  const { theme, toggleTheme } = useTheme();
+  const [user, setUser] = useState<User | null>(null);
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [view, setView] = useState<AppView>('login');
+  const [events, setEvents] = useState<TravelEvent[]>(mockEvents);
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [checkoutPlan, setCheckoutPlan] = useState<StoragePlan | null>(null);
+  const [storageLimitBytes, setStorageLimitBytes] = useState(FREE_STORAGE_BYTES);
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
 
-function AuthGate() {
-  const auth = useAuth();
+  const storageUsedBytes = useMemo(
+    () => events.reduce((sum, e) => sum + e.photos.reduce((s, p) => s + p.size, 0), 0),
+    [events]
+  );
 
+  const addToast = useCallback((type: ToastItem['type'], message: string) => {
+    const id = generateId();
+    setToasts((prev) => [...prev, { id, type, message }]);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 4000);
+  }, []);
+
+  // Đồng bộ Dashboard/Album/Login với nút Back-Forward của trình duyệt
+  const { push, replace } = useHistoryNavigation({
+    onNavigate: (state) => {
+      if (state.view === 'album') {
+        setSelectedEventId(state.eventId);
+        setView('album');
+      } else if (state.view === 'dashboard') {
+        setSelectedEventId(null);
+        setView('dashboard');
+      } else if (state.view === 'help') {
+        setView('help');
+      } else {
+        setSelectedEventId(null);
+        setView('login');
+      }
+      setSearchQuery('');
+    },
+  });
+
+  // Khôi phục phiên đăng nhập nếu đã có token hợp lệ từ lần trước (F5, mở lại tab)
+  // HOẶC xử lý khi backend redirect về sau khi đăng nhập Google xong:
+  //   {FRONTEND_URL}/oauth2/callback?token=<accessToken>
   useEffect(() => {
-    // Doc "?token=..." tu URL NEU trang vua duoc backend redirect ve sau
-    // luong dang nhap Google (authApi.loginWithGoogle, backend SEC-01/06).
-    if (authApi.handleOAuthCallback()) {
-      void auth.checkAuth();
+    debugger
+    if (window.location.pathname === '/oauth2/callback') {
+      const token = new URLSearchParams(window.location.search).get('token');
+      // Dọn URL callback về "/" ngay, tránh xử lý lại token khi F5
+      window.history.replaceState({}, '', '/');
+
+      if (!token) {
+        addToast('error', 'Đăng nhập Google thất bại. Vui lòng thử lại.');
+        replace({ view: 'login' });
+        setCheckingSession(false);
+        return;
+      }
+
+      setToken(token);
+      fetchCurrentUser()
+        .then((loggedInUser) => {
+          setUser(loggedInUser);
+          setView('dashboard');
+          replace({ view: 'dashboard' });
+          addToast('success', `Xin chào, ${loggedInUser.name}! Đăng nhập thành công.`);
+        })
+        .catch(() => {
+          clearToken();
+          addToast('error', 'Không thể xác thực tài khoản. Vui lòng đăng nhập lại.');
+          replace({ view: 'login' });
+        })
+        .finally(() => setCheckingSession(false));
+      return;
     }
+
+    const token = getToken();
+    if (!token) {
+      replace({ view: 'login' });
+      setCheckingSession(false);
+      return;
+    }
+    fetchCurrentUser()
+      .then((restoredUser) => {
+        setUser(restoredUser);
+        setView('dashboard');
+        replace({ view: 'dashboard' });
+      })
+      .catch(() => {
+        // token hết hạn / không hợp lệ -> coi như chưa đăng nhập
+        replace({ view: 'login' });
+      })
+      .finally(() => setCheckingSession(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // KHONG con "if (checking) return blank" / "if (!authenticated) return
-  // LoginScreen" nua - Workspace LUON duoc render NGAY LAP TUC (Local Mode),
-  // "auth" chi anh huong "mode" ben trong Workspace (xem useEffect trong do).
-  return <Workspace authStatus={auth.status} />;
-}
+  const removeToast = (id: string) => setToasts((prev) => prev.filter((t) => t.id !== id));
 
-function Workspace({ authStatus }: { authStatus: AuthStatus }) {
-  const [dark, setDark] = useState(false);
-  const [sidebarVisible, setSidebarVisible] = useState(true);
-  const [cursorLine, setCursorLine] = useState(1);
-  const [mode, setMode] = useState<NotesMode>("local");
-  const [migrating, setMigrating] = useState(false);
-  const migratedRef = useRef(false); // chan migrate chay lai nhieu lan (StrictMode/re-render)
-
-  // Ngay khi phat hien DA dang nhap (auth.status === "authenticated") - du la
-  // do vua bam "Dang nhap & Dong bo" HAY do trinh duyet con phien cu (cookie
-  // refresh_token con hieu luc, xem useAuth.ts) - day toan bo note Local Mode
-  // len server 1 LAN, ROI MOI chuyen mode sang "server" (thu tu quan trong:
-  // phai migrate XONG truoc khi useNotes() doi sang server list(), neu khong
-  // note vua day len se khong xuat hien ngay).
+  // Xử lý VNPay chuyển hướng về app (chỉ xảy ra ở chế độ "real" — chế độ mock xử lý
+  // ngay trong VnpayCheckoutModal, không cần rời trang).
   useEffect(() => {
-    if (authStatus !== "authenticated" || migratedRef.current) return;
-    migratedRef.current = true;
+    if (isMockPaymentMode) return;
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has('vnp_ResponseCode')) return;
 
-    (async () => {
-      setMigrating(true);
-      try {
-        await migrateLocalNotesToServer();
-      } finally {
-        setMigrating(false);
-        setMode("server");
-      }
-    })();
-  }, [authStatus]);
+    verifyVnpayReturn(window.location.search)
+      .then((result) => {
+        const pending = readPendingOrder();
+        const plan = storagePlans.find((p) => p.id === (result.planId ?? pending?.planId));
+        if (result.success && plan) {
+          setStorageLimitBytes(plan.storageGB * 1024 * 1024 * 1024);
+          addToast('success', `Thanh toán VNPay thành công! Đã nâng cấp gói ${plan.label} — ${plan.storageGB}GB. Mã GD: ${result.transactionNo ?? result.orderId}.`);
+        } else {
+          addToast('error', result.message || 'Thanh toán không thành công. Vui lòng thử lại.');
+        }
+        clearPendingOrder();
+      })
+      .catch(() => addToast('error', 'Không thể xác nhận kết quả thanh toán. Vui lòng liên hệ hỗ trợ nếu đã bị trừ tiền.'))
+      .finally(() => {
+        // Dọn query string VNPay khỏi URL để tránh xử lý lại khi F5
+        window.history.replaceState({}, '', window.location.pathname);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Kenh thu 3 cua "Debounce Sync": flush dong bo NGAY khi nguoi dung dong
-  // tab/roi trang (chi co tac dung o Server Mode - Local Mode khong co gi de
-  // flush len Drive). Dung ca 'pagehide' LAN 'visibilitychange' (kiem tra
-  // document.visibilityState === "hidden") de bao phu nhieu tinh huong nhat:
-  // 'pagehide' bat duoc dong tab/dong trinh duyet, 'visibilitychange' con bat
-  // duoc them ca truong hop chuyen sang tab/app khac (mobile OS hay tam dung
-  // tab an, khong phai luc nao cung bat 'pagehide' kip truoc khi bi kill).
-  useEffect(() => {
-    if (mode !== "server") return;
-
-    const flush = () => driveApi.flushOnUnload();
-
-    const onVisibilityChange = () => {
-      if (document.visibilityState === "hidden") flush();
-    };
-
-    window.addEventListener("pagehide", flush);
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    return () => {
-      window.removeEventListener("pagehide", flush);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-    };
-  }, [mode]);
-
-  // DUY NHAT 1 instance useOfflineSync o cap cao nhat nay - xem giai thich
-  // trong useAutoSave.ts ve ly do khong duoc goi hook nay o nhieu noi.
-  const offlineSync = useOfflineSync();
-
-  // notesApi.newNote() calls markSaved() once autosave is initialized below.
-  // Safe: this closure only runs on user interaction, well after render.
-  const notesApi = useNotes(mode, () => autosave.markSaved());
-  const autosave = useAutoSave(
-    mode, notesApi.notes, notesApi.setNotes, notesApi.activeId, notesApi.active?.content,
-    offlineSync.queueChange, offlineSync.pendingCount,
-  );
-  const drive = useDriveSync(mode, notesApi.notes, autosave.status, notesApi.activeId, notesApi.refreshSyncStates);
-  const sidebarResize = useSidebarResize();
-  const selectModeApi = useSelectMode(
-    notesApi.notes, notesApi.setNotes,
-    notesApi.tabs, notesApi.setTabs,
-    notesApi.activeId, notesApi.setActiveId,
-    () => notesApi.setMenuId(null),
-    notesApi.newNote,
-  );
-  const renameApi = useRename(notesApi.notes, notesApi.setNotes, () => notesApi.setMenuId(null));
-
-  const handleChangeContent = (value: string) => {
-    notesApi.setNotes((items) =>
-      items.map((note) => (note.id === notesApi.activeId ? { ...note, content: value } : note))
-    );
-    autosave.markUnsaved();
+  const handleLogout = () => {
+    apiLogout();
+    setUser(null);
+    setView('login');
+    setSelectedEventId(null);
+    setSearchQuery('');
+    replace({ view: 'login' });
   };
 
-  const menuNote = notesApi.menuId !== null ? notesApi.notes.find((n) => n.id === notesApi.menuId) : null;
-  const deleteNote = notesApi.deleteId !== null ? notesApi.notes.find((n) => n.id === notesApi.deleteId) : null;
+  const handleOpenEvent = (id: string) => {
+    setSelectedEventId(id);
+    setView('album');
+    setSearchQuery('');
+    push({ view: 'album', eventId: id }); // tạo entry mới -> Back sẽ quay về Dashboard
+  };
+
+  const handleGoHome = () => {
+    setView('dashboard');
+    setSelectedEventId(null);
+    setSearchQuery('');
+    push({ view: 'dashboard' });
+  };
+
+  const handleOpenHelp = () => {
+    setView('help');
+    push({ view: 'help' });
+  };
+
+  const handleSaveProfileName = (name: string) => {
+    setUser((prev) => (prev ? { ...prev, name } : prev));
+    addToast('success', 'Đã cập nhật tên hiển thị.');
+  };
+
+  const handleSelectPlan = (plan: StoragePlan, result: VnpayReturnResult) => {
+    setStorageLimitBytes(plan.storageGB * 1024 * 1024 * 1024);
+    setCheckoutPlan(null);
+    addToast(
+      'success',
+      `Thanh toán VNPay thành công! Đã nâng cấp gói ${plan.label} — ${plan.storageGB}GB lưu trữ. Mã giao dịch: ${result.transactionNo}.`
+    );
+  };
+
+  const handleCreateEvent = (event: TravelEvent) => {
+    setEvents((prev) => [event, ...prev]);
+    setShowCreateModal(false);
+    addToast('success', `Sự kiện "${event.name}" đã được tạo thành công!`);
+  };
+
+  const handleUploaded = (photos: Photo[]) => {
+    if (!selectedEventId) return;
+    setEvents((prev) =>
+      prev.map((e) =>
+        e.id === selectedEventId ? { ...e, photos: [...e.photos, ...photos] } : e
+      )
+    );
+    addToast('success', `Đã tải lên ${photos.length} ảnh thành công!`);
+    setShowUploadModal(false);
+  };
+
+  const handleDeletePhotos = (ids: string[]) => {
+    if (!selectedEventId) return;
+    setEvents((prev) =>
+      prev.map((e) =>
+        e.id === selectedEventId
+          ? { ...e, photos: e.photos.filter((p) => !ids.includes(p.id)) }
+          : e
+      )
+    );
+    addToast('success', `Đã xóa ${ids.length} ảnh.`);
+  };
+
+  const selectedEvent = selectedEventId ? events.find((e) => e.id === selectedEventId) : null;
+
+  if (checkingSession) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+        <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
-    <main className={dark ? "app dark" : "app"} onClick={() => notesApi.setMenuId(null)}>
-      <TopBar
-        dark={dark}
-        onToggleSidebar={() => setSidebarVisible((v) => !v)}
-        tabs={notesApi.tabs}
-        notes={notesApi.notes}
-        activeId={notesApi.activeId}
-        status={autosave.status}
-        onSelectTab={notesApi.setActiveId}
-        onCloseTab={notesApi.closeTab}
-        onNewNote={notesApi.newNote}
-        onManualSave={autosave.manualSave}
-        onToggleDark={() => setDark((d) => !d)}
-      />
-
-      <section className="workspace">
-        <Sidebar
-          visible={sidebarVisible}
-          width={sidebarResize.sidebarWidth}
-          notes={notesApi.notes}
-          activeId={notesApi.activeId}
-          selectMode={selectModeApi.selectMode}
-          selected={selectModeApi.selected}
-          driveConnected={drive.driveConnected}
-          syncStatus={drive.syncStatus}
-          lastSynced={drive.lastSynced}
-          noteSyncMap={drive.noteSyncMap}
-          onOpenNote={(id) => notesApi.openNote(id, selectModeApi.selectMode)}
-          onNewNote={notesApi.newNote}
-          onEnterSelectMode={() => selectModeApi.enterSelectMode()}
-          onExitSelectMode={selectModeApi.exitSelectMode}
-          onToggleSelect={selectModeApi.toggleSelect}
-          onBulkDeleteRequest={() => selectModeApi.setBulkDeleteConfirm(true)}
-          onTouchStart={selectModeApi.handleTouchStart}
-          onTouchEnd={selectModeApi.handleTouchEnd}
-          onMoreClick={notesApi.handleMoreClick}
-        />
-
-        {sidebarVisible && (
-          <SidebarResizer onMouseDown={sidebarResize.startResize} onDoubleClick={sidebarResize.resetWidth} />
-        )}
-
-        {notesApi.active && (
-          <EditorPane
-            content={notesApi.active.content}
-            lines={notesApi.lines}
-            cursorLine={cursorLine}
-            textareaRef={notesApi.textarea}
-            onCursorMove={setCursorLine}
-            onChange={handleChangeContent}
+    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950">
+      {/* Login page has its own layout */}
+      {view === 'login' ? (
+        <LoginPage theme={theme} onToggleTheme={toggleTheme} />
+      ) : (
+        <>
+          <Header
+            user={user}
+            onLogout={handleLogout}
+            onGoHome={handleGoHome}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            showSearch={view === 'dashboard' || view === 'album'}
+            theme={theme}
+            onToggleTheme={toggleTheme}
+            usedBytes={storageUsedBytes}
+            limitBytes={storageLimitBytes}
+            onOpenProfile={() => setShowProfileModal(true)}
+            onOpenSettings={() => setShowSettingsModal(true)}
+            onOpenHelp={handleOpenHelp}
+            onOpenUpgrade={() => setShowUpgradeModal(true)}
           />
-        )}
-      </section>
 
-      <StatusBar
-        status={autosave.status}
-        statusLabel={autosave.statusLabel()}
-        driveConnected={drive.driveConnected}
-        syncStatus={drive.syncStatus}
-        driveIconChar={drive.driveIcon()}
-        onOpenDrivePanel={() => drive.setShowDrivePanel(true)}
-        cursorLine={cursorLine}
-        linesCount={notesApi.lines.length}
-        charCount={notesApi.active?.content.length ?? 0}
-      />
+          <div className="flex-1">
+            {view === 'dashboard' && (
+              <Dashboard
+                user={user!}
+                events={events}
+                searchQuery={searchQuery}
+                onOpenEvent={handleOpenEvent}
+                onCreateEvent={() => setShowCreateModal(true)}
+              />
+            )}
 
-      {/* Fixed-position dropdown — escapes all overflow containers */}
-      {menuNote && (
-        <ContextMenu
-          pos={notesApi.menuPos}
-          onDuplicate={() => notesApi.duplicate(menuNote.id)}
-          onRename={() => renameApi.openRename(menuNote.id)}
-          onDownload={() => notesApi.download(menuNote.id)}
-          onDeleteRequest={() => { notesApi.setDeleteId(menuNote.id); notesApi.setMenuId(null); }}
+            {view === 'album' && selectedEvent && (
+              <AlbumPage
+                event={selectedEvent}
+                user={user}
+                searchQuery={searchQuery}
+                onBack={handleGoHome}
+                onUpload={() => {
+                  if (!user) { addToast('warning', 'Vui lòng đăng nhập để tải ảnh lên.'); return; }
+                  if (storageUsedBytes >= storageLimitBytes) {
+                    addToast('warning', `Đã đầy dung lượng lưu trữ (${formatTotalSize(storageLimitBytes)}). Vui lòng nâng cấp để tiếp tục.`);
+                    setShowUpgradeModal(true);
+                    return;
+                  }
+                  setShowUploadModal(true);
+                }}
+                onDeletePhotos={handleDeletePhotos}
+              />
+            )}
+
+            {view === 'help' && <HelpPage onBack={handleGoHome} />}
+          </div>
+
+          <Footer onOpenHelp={handleOpenHelp} />
+        </>
+      )}
+
+      {/* Modals */}
+      {showCreateModal && (
+        <CreateEventModal
+          existingNames={events.map((e) => e.name)}
+          onClose={() => setShowCreateModal(false)}
+          onSave={handleCreateEvent}
         />
       )}
 
-      {deleteNote && (
-        <DeleteConfirmModal
-          noteName={deleteNote.name}
-          onCancel={() => notesApi.setDeleteId(null)}
-          onConfirm={notesApi.deleteNote}
+      {showUploadModal && selectedEvent && (
+        <UploadModal
+          existingPhotoNames={selectedEvent.photos.map((p) => p.name)}
+          onClose={() => setShowUploadModal(false)}
+          onUploaded={handleUploaded}
         />
       )}
 
-      {selectModeApi.bulkDeleteConfirm && (
-        <BulkDeleteConfirmModal
-          count={selectModeApi.selected.size}
-          onCancel={() => selectModeApi.setBulkDeleteConfirm(false)}
-          onConfirm={selectModeApi.confirmBulkDelete}
+      {showProfileModal && user && (
+        <ProfileModal
+          user={user}
+          events={events}
+          usedBytes={storageUsedBytes}
+          limitBytes={storageLimitBytes}
+          onClose={() => setShowProfileModal(false)}
+          onSave={handleSaveProfileName}
+          onOpenUpgrade={() => setShowUpgradeModal(true)}
         />
       )}
 
-      {renameApi.renameId && (
-        <RenameModal
-          name={renameApi.renameName}
-          error={renameApi.renameError}
-          inputRef={renameApi.renameInput}
-          onChange={renameApi.onRenameChange}
-          onCancel={() => renameApi.setRenameId(null)}
-          onCommit={renameApi.commitRename}
+      {showSettingsModal && user && (
+        <SettingsModal
+          user={user}
+          theme={theme}
+          onToggleTheme={toggleTheme}
+          onClose={() => setShowSettingsModal(false)}
+          onLogout={handleLogout}
+          onToast={addToast}
         />
       )}
 
-      {drive.showDrivePanel && (
-        <DrivePanel
-          notes={notesApi.notes}
-          driveConnected={drive.driveConnected}
-          driveConnecting={drive.driveConnecting}
-          syncStatus={drive.syncStatus}
-          lastSynced={drive.lastSynced}
-          noteSyncMap={drive.noteSyncMap}
-          driveIconChar={drive.driveIcon()}
-          onClose={() => drive.setShowDrivePanel(false)}
-          onConnect={drive.connectDrive}
-          onCancelConnecting={drive.cancelConnecting}
-          onSyncNow={drive.doSync}
-          onDisconnect={drive.disconnectDrive}
+      {showUpgradeModal && (
+        <UpgradeModal
+          usedBytes={storageUsedBytes}
+          limitBytes={storageLimitBytes}
+          onClose={() => setShowUpgradeModal(false)}
+          onProceedToCheckout={(plan) => {
+            setShowUpgradeModal(false);
+            setCheckoutPlan(plan);
+          }}
         />
       )}
 
-      {/* Banner "Dang nhap & Dong bo" - CHI hien o Local Mode (chua dang nhap),
-          bam vao se dieu huong dang nhap Google, sau do TU DONG day note len
-          server (xem useEffect migrate o tren). Dung inline style (giong
-          LoginScreen/DriveCallbackScreen, SEC-10) de khong dong den index.css. */}
-      {mode === "local" && authStatus !== "checking" && (
-        <button style={syncBannerStyle} onClick={() => authApi.loginWithGoogle()}>
-          ☁ Đăng nhập & Đồng bộ
-        </button>
+      {checkoutPlan && (
+        <VnpayCheckoutModal
+          plan={checkoutPlan}
+          customerName={user?.name}
+          onCancel={() => setCheckoutPlan(null)}
+          onSuccess={handleSelectPlan}
+        />
       )}
 
-      {migrating && (
-        <div style={migratingOverlayStyle}>Đang đồng bộ ghi chú lên tài khoản của bạn...</div>
-      )}
-    </main>
+      <Toast toasts={toasts} onRemove={removeToast} />
+    </div>
   );
 }
-
-const syncBannerStyle: CSSProperties = {
-  position: "fixed", bottom: 16, right: 16, zIndex: 50,
-  padding: "10px 16px", borderRadius: 8, border: "1px solid #26262a",
-  background: "#f2f2f3", color: "#0b0b0c", fontWeight: 600, fontSize: 13,
-  cursor: "pointer", boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
-};
-
-const migratingOverlayStyle: CSSProperties = {
-  position: "fixed", bottom: 16, right: 16, zIndex: 50,
-  padding: "10px 16px", borderRadius: 8, border: "1px solid #26262a",
-  background: "#141416", color: "#f2f2f3", fontSize: 13,
-};
