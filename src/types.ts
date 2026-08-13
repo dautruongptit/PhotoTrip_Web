@@ -25,6 +25,11 @@ export interface TravelEvent {
   location: string;
   coverImage: string;
   photos: Photo[];
+  // Tổng số ảnh / dung lượng theo backend (EventResponse.photoCount/totalSize) —
+  // dùng để hiển thị ở Dashboard/EventCard mà không cần tải hết `photos` của
+  // MỌI event (photos chỉ được tải đầy đủ khi mở AlbumPage của event đó).
+  photoCount?: number;
+  totalSizeBytes?: number;
   createdBy: string;
   createdAt: string;
 }

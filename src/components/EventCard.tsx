@@ -8,7 +8,7 @@ interface Props {
 }
 
 export default function EventCard({ event, onClick }: Props) {
-  const totalPhotos = event.photos.length;
+  const totalPhotos = event.photoCount ?? event.photos.length;
 
   return (
     <article

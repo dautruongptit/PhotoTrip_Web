@@ -38,8 +38,10 @@ const EmptyEvents = ({ onCreateEvent }: { onCreateEvent: () => void }) => (
 );
 
 export default function Dashboard({ user, events, searchQuery, onOpenEvent, onCreateEvent }: Props) {
-  const totalPhotos = events.reduce((s, e) => s + e.photos.length, 0);
-  const totalSize   = events.reduce((s, e) => s + e.photos.reduce((ps, p) => ps + p.size, 0), 0);
+  const totalPhotos = events.reduce((s, e) => s + (e.photoCount ?? e.photos.length), 0);
+  const totalSize   = events.reduce((s, e) => s + (e.totalSizeBytes ?? e.photos.reduce((ps, p) => ps + p.size, 0)), 0);
+  // Ảnh gần đây chỉ lấy được từ các event đã mở AlbumPage ít nhất 1 lần trong
+  // phiên này (photos chỉ tải theo từng event, không tải hết mọi event ở Dashboard).
   const allPhotos   = events.flatMap((e) => e.photos.map((ph) => ({ ...ph, eventName: e.name })));
   const recentPhotos = [...allPhotos].sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()).slice(0, 6);
 

@@ -1,18 +1,24 @@
 // src/api/client.ts
+import { getToken, setToken, clearToken } from "../lib/apiClient";
+
 const API_BASE = import.meta.env.VITE_API_BASE_URL; // "/api" ở cả dev (nhờ Vite proxy) và prod (nhờ nginx)
 
-let accessToken: string | null = null;
+// Dùng chung 1 kho token với src/lib/apiClient.ts (localStorage) — trước đây
+// module này giữ 1 biến accessToken riêng, không bao giờ được set nên mọi
+// request qua events.ts/photos.ts/... đều thiếu Authorization header.
 export const setAccessToken = (t: string | null) => {
-  accessToken = t;
+  if (t) setToken(t);
+  else clearToken();
 };
-export const getAccessToken = () => accessToken;
+export const getAccessToken = () => getToken();
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const token = getToken();
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
     credentials: "include", // bắt buộc để gửi/nhận cookie refresh_token
     headers: {
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
     },
   });
@@ -43,13 +49,13 @@ async function tryRefresh(): Promise<boolean> {
     });
     const body = await res.json();
     if (body.success) {
-      setAccessToken(body.data.accessToken);
+      setToken(body.data.accessToken);
       return true;
     }
   } catch {
     // ignore, xử lý bên dưới
   }
-  setAccessToken(null);
+  clearToken();
   return false;
 }
 

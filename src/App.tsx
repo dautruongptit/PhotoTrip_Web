@@ -1,12 +1,46 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { AppView, StoragePlan, TravelEvent, ToastItem, Photo, User } from './types';
-import { mockEvents, storagePlans } from './mockData';
+import { storagePlans } from './mockData';
 import { generateId, formatTotalSize, FREE_STORAGE_BYTES } from './utils';
 import { useTheme } from './hooks/useTheme';
 import { useHistoryNavigation } from './hooks/useHistoryNavigation';
 import { getToken, setToken, clearToken } from './lib/apiClient';
 import { fetchCurrentUser, logout as apiLogout } from './lib/authApi';
 import { verifyVnpayReturn, readPendingOrder, clearPendingOrder, isMockPaymentMode, type VnpayReturnResult } from './lib/paymentApi';
+import { listEvents, createEvent as apiCreateEvent, type EventResponse, type EventFormData } from './api/events';
+import { listPhotosByEvent, deletePhoto as apiDeletePhoto, type PhotoResponse } from './api/photos';
+
+const FALLBACK_COVER_IMAGE = 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800&h=500&fit=crop&auto=format';
+
+function mapEventResponse(dto: EventResponse, photos: Photo[] = []): TravelEvent {
+  return {
+    id: String(dto.id),
+    name: dto.name,
+    description: dto.description ?? '',
+    startDate: dto.startDate,
+    endDate: dto.endDate || dto.startDate,
+    location: dto.location,
+    coverImage: dto.coverImageUrl || FALLBACK_COVER_IMAGE,
+    photos,
+    photoCount: dto.photoCount,
+    totalSizeBytes: dto.totalSize,
+    createdBy: dto.ownerName,
+    createdAt: dto.createdAt,
+  };
+}
+
+function mapPhotoResponse(dto: PhotoResponse): Photo {
+  return {
+    id: String(dto.id),
+    name: dto.originalName,
+    url: dto.url,
+    size: dto.size,
+    width: dto.width,
+    height: dto.height,
+    uploadedAt: dto.uploadedTime,
+    uploadedBy: dto.uploadedBy,
+  };
+}
 
 import LoginPage from './components/LoginPage';
 import Header from './components/Header';
@@ -27,7 +61,7 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [checkingSession, setCheckingSession] = useState(true);
   const [view, setView] = useState<AppView>('login');
-  const [events, setEvents] = useState<TravelEvent[]>(mockEvents);
+  const [events, setEvents] = useState<TravelEvent[]>([]);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -40,7 +74,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
 
   const storageUsedBytes = useMemo(
-    () => events.reduce((sum, e) => sum + e.photos.reduce((s, p) => s + p.size, 0), 0),
+    () => events.reduce((sum, e) => sum + (e.totalSizeBytes ?? e.photos.reduce((s, p) => s + p.size, 0)), 0),
     [events]
   );
 
@@ -50,12 +84,34 @@ export default function App() {
     setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 4000);
   }, []);
 
+  // Tải danh sách Event thật từ backend (gọi sau khi xác nhận đã đăng nhập).
+  const loadEvents = useCallback(async () => {
+    try {
+      const page = await listEvents(0, 100);
+      setEvents(page.content.map((dto) => mapEventResponse(dto)));
+    } catch (err) {
+      addToast('error', err instanceof Error ? err.message : 'Không thể tải danh sách sự kiện.');
+    }
+  }, [addToast]);
+
+  // Tải toàn bộ ảnh của 1 Event (chỉ gọi khi mở AlbumPage của event đó).
+  const loadEventPhotos = useCallback(async (eventId: string) => {
+    try {
+      const page = await listPhotosByEvent(Number(eventId), 0, 500);
+      const photos = page.content.map(mapPhotoResponse);
+      setEvents((prev) => prev.map((e) => (e.id === eventId ? { ...e, photos, photoCount: page.totalElements } : e)));
+    } catch (err) {
+      addToast('error', err instanceof Error ? err.message : 'Không thể tải ảnh của sự kiện.');
+    }
+  }, [addToast]);
+
   // Đồng bộ Dashboard/Album/Login với nút Back-Forward của trình duyệt
   const { push, replace } = useHistoryNavigation({
     onNavigate: (state) => {
       if (state.view === 'album') {
         setSelectedEventId(state.eventId);
         setView('album');
+        if (state.eventId) loadEventPhotos(state.eventId);
       } else if (state.view === 'dashboard') {
         setSelectedEventId(null);
         setView('dashboard');
@@ -73,7 +129,6 @@ export default function App() {
   // HOẶC xử lý khi backend redirect về sau khi đăng nhập Google xong:
   //   {FRONTEND_URL}/oauth2/callback?token=<accessToken>
   useEffect(() => {
-    debugger
     if (window.location.pathname === '/oauth2/callback') {
       const token = new URLSearchParams(window.location.search).get('token');
       // Dọn URL callback về "/" ngay, tránh xử lý lại token khi F5
@@ -93,6 +148,7 @@ export default function App() {
           setView('dashboard');
           replace({ view: 'dashboard' });
           addToast('success', `Xin chào, ${loggedInUser.name}! Đăng nhập thành công.`);
+          loadEvents();
         })
         .catch(() => {
           clearToken();
@@ -114,6 +170,7 @@ export default function App() {
         setUser(restoredUser);
         setView('dashboard');
         replace({ view: 'dashboard' });
+        loadEvents();
       })
       .catch(() => {
         // token hết hạn / không hợp lệ -> coi như chưa đăng nhập
@@ -166,6 +223,7 @@ export default function App() {
     setView('album');
     setSearchQuery('');
     push({ view: 'album', eventId: id }); // tạo entry mới -> Back sẽ quay về Dashboard
+    loadEventPhotos(id);
   };
 
   const handleGoHome = () => {
@@ -194,33 +252,40 @@ export default function App() {
     );
   };
 
-  const handleCreateEvent = (event: TravelEvent) => {
-    setEvents((prev) => [event, ...prev]);
+  const handleCreateEvent = async (data: EventFormData, coverFile?: File) => {
+    const dto = await apiCreateEvent(data, coverFile);
+    const newEvent = mapEventResponse(dto);
+    setEvents((prev) => [newEvent, ...prev]);
     setShowCreateModal(false);
-    addToast('success', `Sự kiện "${event.name}" đã được tạo thành công!`);
+    addToast('success', `Sự kiện "${newEvent.name}" đã được tạo thành công!`);
   };
 
-  const handleUploaded = (photos: Photo[]) => {
+  const handleUploaded = async (uploadedCount: number) => {
     if (!selectedEventId) return;
-    setEvents((prev) =>
-      prev.map((e) =>
-        e.id === selectedEventId ? { ...e, photos: [...e.photos, ...photos] } : e
-      )
-    );
-    addToast('success', `Đã tải lên ${photos.length} ảnh thành công!`);
+    await loadEventPhotos(selectedEventId);
+    addToast('success', `Đã tải lên ${uploadedCount} ảnh thành công!`);
     setShowUploadModal(false);
   };
 
-  const handleDeletePhotos = (ids: string[]) => {
+  const handleDeletePhotos = async (ids: string[]) => {
     if (!selectedEventId) return;
-    setEvents((prev) =>
-      prev.map((e) =>
-        e.id === selectedEventId
-          ? { ...e, photos: e.photos.filter((p) => !ids.includes(p.id)) }
-          : e
-      )
-    );
-    addToast('success', `Đã xóa ${ids.length} ảnh.`);
+    try {
+      await Promise.all(ids.map((id) => apiDeletePhoto(Number(id))));
+      setEvents((prev) =>
+        prev.map((e) =>
+          e.id === selectedEventId
+            ? {
+                ...e,
+                photos: e.photos.filter((p) => !ids.includes(p.id)),
+                photoCount: Math.max(0, (e.photoCount ?? e.photos.length) - ids.length),
+              }
+            : e
+        )
+      );
+      addToast('success', `Đã xóa ${ids.length} ảnh.`);
+    } catch (err) {
+      addToast('error', err instanceof Error ? err.message : 'Xóa ảnh thất bại.');
+    }
   };
 
   const selectedEvent = selectedEventId ? events.find((e) => e.id === selectedEventId) : null;
@@ -305,6 +370,7 @@ export default function App() {
 
       {showUploadModal && selectedEvent && (
         <UploadModal
+          eventId={Number(selectedEvent.id)}
           existingPhotoNames={selectedEvent.photos.map((p) => p.name)}
           onClose={() => setShowUploadModal(false)}
           onUploaded={handleUploaded}

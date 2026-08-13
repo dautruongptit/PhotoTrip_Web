@@ -1,11 +1,10 @@
 import { useState, useRef } from 'react';
-import type { TravelEvent } from '../types';
-import { generateId } from '../utils';
+import type { EventFormData } from '../api/events';
 
 interface Props {
   existingNames: string[];
   onClose: () => void;
-  onSave: (event: TravelEvent) => void;
+  onSave: (data: EventFormData, coverFile?: File) => Promise<void>;
 }
 
 export default function CreateEventModal({ existingNames, onClose, onSave }: Props) {
@@ -18,6 +17,8 @@ export default function CreateEventModal({ existingNames, onClose, onSave }: Pro
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isDragging, setIsDragging] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const validate = () => {
@@ -35,23 +36,28 @@ export default function CreateEventModal({ existingNames, onClose, onSave }: Pro
     setCoverPreview(URL.createObjectURL(file));
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const e = validate();
     if (Object.keys(e).length) { setErrors(e); return; }
 
-    const newEvent: TravelEvent = {
-      id: generateId(),
-      name: name.trim(),
-      description: description.trim(),
-      startDate,
-      endDate: endDate || startDate,
-      location: location.trim(),
-      coverImage: coverPreview || 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800&h=500&fit=crop&auto=format',
-      photos: [],
-      createdBy: 'user-1',
-      createdAt: new Date().toISOString(),
-    };
-    onSave(newEvent);
+    setSubmitError(null);
+    setIsSubmitting(true);
+    try {
+      await onSave(
+        {
+          name: name.trim(),
+          description: description.trim() || undefined,
+          startDate,
+          endDate: endDate || startDate,
+          location: location.trim(),
+        },
+        coverFile ?? undefined
+      );
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Không thể tạo sự kiện. Vui lòng thử lại.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const inputClass = (field: string) =>
@@ -202,19 +208,26 @@ export default function CreateEventModal({ existingNames, onClose, onSave }: Pro
         </div>
 
         {/* Footer */}
-        <div className="sticky bottom-0 bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800 px-6 py-4 flex gap-3">
-          <button
-            onClick={onClose}
-            className="flex-1 py-3 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-          >
-            Hủy
-          </button>
-          <button
-            onClick={handleSubmit}
-            className="flex-1 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-sm font-semibold text-white transition-all shadow-sm hover:shadow-md hover:shadow-blue-200"
-          >
-            Tạo sự kiện
-          </button>
+        <div className="sticky bottom-0 bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800 px-6 py-4">
+          {submitError && (
+            <p className="text-red-500 text-xs mb-3 flex items-center gap-1"><span>⚠</span>{submitError}</p>
+          )}
+          <div className="flex gap-3">
+            <button
+              onClick={onClose}
+              disabled={isSubmitting}
+              className="flex-1 py-3 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-40"
+            >
+              Hủy
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={isSubmitting}
+              className="flex-1 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-sm font-semibold text-white transition-all shadow-sm hover:shadow-md hover:shadow-blue-200 disabled:opacity-60"
+            >
+              {isSubmitting ? 'Đang tạo…' : 'Tạo sự kiện'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

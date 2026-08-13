@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
-import type { Photo } from '../types';
 import { generateId, formatFileSize, ACCEPTED_TYPES, MAX_FILE_SIZE } from '../utils';
+import { uploadPhotos } from '../api/photos';
 
 interface FileEntry {
   file: File;
@@ -15,14 +15,15 @@ interface FileEntry {
 }
 
 interface Props {
+  eventId: number;
   existingPhotoNames: string[];
   onClose: () => void;
-  onUploaded: (photos: Photo[]) => void;
+  onUploaded: (uploadedCount: number) => void;
 }
 
 const ACCEPTED_EXT = ['.jpg', '.jpeg', '.png', '.webp', '.heic'];
 
-export default function UploadModal({ existingPhotoNames, onClose, onUploaded }: Props) {
+export default function UploadModal({ eventId, existingPhotoNames, onClose, onUploaded }: Props) {
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -95,49 +96,44 @@ export default function UploadModal({ existingPhotoNames, onClose, onUploaded }:
   const duplicateCount = entries.filter((e) => e.isDuplicate && !e.duplicateAction).length;
   const canUpload = pendingCount + entries.filter((e) => e.isDuplicate && e.duplicateAction && e.duplicateAction !== 'skip').length > 0 && !duplicateCount;
 
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
   const startUpload = async () => {
     if (!canUpload) return;
     setIsUploading(true);
+    setUploadError(null);
 
     const uploadable = entries.filter((e) =>
       (e.status === 'pending' && !e.isDuplicate) ||
       (e.isDuplicate && e.duplicateAction === 'rename') ||
       (e.isDuplicate && e.duplicateAction === 'replace')
     );
+    const uploadableIds = new Set(uploadable.map((e) => e.id));
 
-    const uploaded: Photo[] = [];
+    setEntries((prev) => prev.map((e) => uploadableIds.has(e.id) ? { ...e, status: 'uploading', progress: 50 } : e));
 
-    for (const entry of uploadable) {
-      // Simulate progress
-      for (let pct = 0; pct <= 100; pct += 25) {
-        await new Promise((r) => setTimeout(r, 120));
-        setEntries((prev) => prev.map((e) => e.id === entry.id ? { ...e, status: 'uploading', progress: pct } : e));
-      }
+    // Đổi tên file trước khi gửi nếu người dùng chọn "Đổi tên" cho ảnh trùng tên
+    const files = uploadable.map((entry) =>
+      entry.isDuplicate && entry.duplicateAction === 'rename' && entry.newName
+        ? new File([entry.file], entry.newName, { type: entry.file.type })
+        : entry.file
+    );
 
-      const finalName = entry.isDuplicate && entry.duplicateAction === 'rename'
-        ? (entry.newName || `${entry.file.name.replace(/(\.[^.]+)$/, '')}_copy$1`)
-        : entry.file.name;
+    try {
+      const result = await uploadPhotos(eventId, files);
 
-      uploaded.push({
-        id: generateId(),
-        name: finalName,
-        url: entry.preview,
-        size: entry.file.size,
-        width: 1920,
-        height: 1080,
-        uploadedAt: new Date().toISOString(),
-        uploadedBy: 'user-1',
-      });
+      setEntries((prev) => prev.map((e) => uploadableIds.has(e.id) ? { ...e, status: 'done', progress: 100 } : e));
+      // Mark skipped
+      setEntries((prev) => prev.map((e) => (e.isDuplicate && e.duplicateAction === 'skip') || e.status === 'error' ? { ...e, status: 'skipped' } : e));
 
-      setEntries((prev) => prev.map((e) => e.id === entry.id ? { ...e, status: 'done', progress: 100 } : e));
+      setIsUploading(false);
+      setDone(true);
+      if (result.uploaded > 0) onUploaded(result.uploaded);
+    } catch (err) {
+      setEntries((prev) => prev.map((e) => uploadableIds.has(e.id) ? { ...e, status: 'error', progress: 0, error: 'Tải lên thất bại' } : e));
+      setUploadError(err instanceof Error ? err.message : 'Tải ảnh lên thất bại. Vui lòng thử lại.');
+      setIsUploading(false);
     }
-
-    // Mark skipped
-    setEntries((prev) => prev.map((e) => (e.isDuplicate && e.duplicateAction === 'skip') || e.status === 'error' ? { ...e, status: 'skipped' } : e));
-
-    setIsUploading(false);
-    setDone(true);
-    if (uploaded.length) onUploaded(uploaded);
   };
 
   const statusIcon = (e: FileEntry) => {
@@ -305,7 +301,11 @@ export default function UploadModal({ existingPhotoNames, onClose, onUploaded }:
         )}
 
         {/* Footer */}
-        <div className="flex-shrink-0 px-6 py-4 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between gap-3">
+        <div className="flex-shrink-0 px-6 py-4 border-t border-gray-100 dark:border-gray-800">
+          {uploadError && (
+            <p className="text-red-500 text-xs mb-3 flex items-center gap-1"><span>⚠</span>{uploadError}</p>
+          )}
+          <div className="flex items-center justify-between gap-3">
           <span className="text-sm text-gray-500 dark:text-gray-400">
             {entries.filter(e => e.status === 'pending' || e.status === 'uploading' || e.status === 'done').length} ảnh đã chọn
           </span>
@@ -328,6 +328,7 @@ export default function UploadModal({ existingPhotoNames, onClose, onUploaded }:
                 </button>
               </>
             )}
+          </div>
           </div>
         </div>
       </div>
