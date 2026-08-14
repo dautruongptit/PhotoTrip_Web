@@ -14,9 +14,9 @@
 ## Chạy dev (native, không Docker)
 ```bash
 pnpm install
-pnpm dev     # http://localhost:8443, proxy /api,/oauth2,/login/oauth2 -> localhost:8083
+pnpm dev     # http://localhost:8443, proxy /api,/oauth2,/login/oauth2 -> localhost:8085
 ```
-Yêu cầu: backend đang chạy ở `localhost:8083` (qua IntelliJ, xem `docker-deployment-guide.md` mục 14) và Postgres dev đang chạy (`docker-compose.db.dev.yml` trong bộ backend).
+Yêu cầu: backend đang chạy ở `localhost:8085` (qua IntelliJ, xem `docker-deployment-guide.md` mục 14) và Postgres dev đang chạy (`docker-compose.db.dev.yml` trong bộ backend).
 
 ## Build production (Ubuntu, Docker)
 ```bash

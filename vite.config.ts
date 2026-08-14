@@ -34,9 +34,13 @@ export default defineConfig(({ mode }) => {
       port: parseInt(process.env.PORT || '8443'),
       strictPort: true,
       proxy: {
-        '/api': { target: 'http://localhost:8068', changeOrigin: true },
-        '/oauth2': { target: 'http://localhost:8068', changeOrigin: true },
-        '/login/oauth2': { target: 'http://localhost:8068', changeOrigin: true },
+        '/api': { target: 'http://localhost:8085', changeOrigin: true },
+        // CHỈ proxy "/oauth2/authorization/**" (endpoint khởi tạo OAuth2 Login của
+        // Spring Security) — KHÔNG proxy bare "/oauth2" vì sẽ nuốt luôn route
+        // "/oauth2/callback" của chính SPA (App.tsx tự đọc token từ query string ở
+        // route này), khiến request bị đẩy nhầm sang backend và lỗi NoResourceFoundException.
+        '/oauth2/authorization': { target: 'http://localhost:8085', changeOrigin: true },
+        '/login/oauth2': { target: 'http://localhost:8085', changeOrigin: true },
       },
       watch: { ignored: ['**/.figma/**'] },
     },

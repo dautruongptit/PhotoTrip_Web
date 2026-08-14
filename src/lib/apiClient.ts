@@ -1,10 +1,10 @@
-// Backend thật (travelPhoto-API) mặc định chạy port 8068.
+// Backend thật (travelPhoto-API) mặc định chạy port 8085.
 // Lưu ý: application.yml của backend đang có "server.servlet.context-path: /api/v1"
 // TRÙNG với "/api/..." đã có sẵn trong từng @RequestMapping, khiến URL thật trở thành
 // "/api/v1/api/auth/me" và làm cookie refresh_token (path="/api/auth") không được gửi
 // kèm đúng. Khuyến nghị: xóa dòng context-path đó ở backend. Cấu hình dưới đây giả định
 // bạn đã xóa (nên VITE_API_BASE_URL kết thúc bằng "/api" là đủ, không có "/v1").
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8068/api';
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8085/api';
 const TOKEN_KEY = 'travel-photo-token';
 
 export class ApiError extends Error {
