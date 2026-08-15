@@ -1,7 +1,9 @@
-import { defineConfig, type HtmlTagDescriptor, type Plugin } from 'vite'
+import { defineConfig, type HtmlTagDescriptor, type Plugin, type ProxyOptions } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'node:path'
+import fs from 'node:fs'
+import type { ServerResponse } from 'node:http'
 
 import siteConfiguration from './.figma/make/site.json'
 
@@ -34,13 +36,13 @@ export default defineConfig(({ mode }) => {
       port: parseInt(process.env.PORT || '8443'),
       strictPort: true,
       proxy: {
-        '/api': { target: 'http://localhost:8085', changeOrigin: true },
+        '/api': { target: 'http://localhost:8085', changeOrigin: true, configure: withOfflineFallback() },
         // CHỈ proxy "/oauth2/authorization/**" (endpoint khởi tạo OAuth2 Login của
         // Spring Security) — KHÔNG proxy bare "/oauth2" vì sẽ nuốt luôn route
         // "/oauth2/callback" của chính SPA (App.tsx tự đọc token từ query string ở
         // route này), khiến request bị đẩy nhầm sang backend và lỗi NoResourceFoundException.
-        '/oauth2/authorization': { target: 'http://localhost:8085', changeOrigin: true },
-        '/login/oauth2': { target: 'http://localhost:8085', changeOrigin: true },
+        '/oauth2/authorization': { target: 'http://localhost:8085', changeOrigin: true, configure: withOfflineFallback() },
+        '/login/oauth2': { target: 'http://localhost:8085', changeOrigin: true, configure: withOfflineFallback() },
       },
       watch: { ignored: ['**/.figma/**'] },
     },
@@ -50,6 +52,32 @@ export default defineConfig(({ mode }) => {
     },
   }
 })
+
+/**
+ * Khi backend (localhost:8085) chưa start/crash, http-proxy của Vite dev server mặc
+ * định chỉ đóng kết nối — trình duyệt tự hiện trang lỗi kết nối riêng (không phải
+ * response HTTP thật), trải nghiệm còn tệ hơn cả trang 502 mặc định. Bắt sự kiện
+ * "error" của proxy và trả về đúng public/error.html (cùng popup thông báo dùng ở
+ * production qua nginx `error_page`, xem nginx.conf) để dev và prod nhất quán.
+ * Đọc lại file mỗi lần lỗi xảy ra (không cache) để luôn phản ánh đúng nội dung mới
+ * nhất nếu error.html được sửa mà không cần khởi động lại dev server.
+ */
+function withOfflineFallback(): NonNullable<ProxyOptions['configure']> {
+  return (proxy) => {
+    proxy.on('error', (_err, _req, res) => {
+      const httpRes = res as ServerResponse
+      if (!httpRes || typeof httpRes.writeHead !== 'function' || httpRes.headersSent) return
+      try {
+        const html = fs.readFileSync(path.resolve(__dirname, 'public/error.html'), 'utf-8')
+        httpRes.writeHead(502, { 'Content-Type': 'text/html; charset=utf-8' })
+        httpRes.end(html)
+      } catch {
+        httpRes.writeHead(502)
+        httpRes.end('Bad Gateway')
+      }
+    })
+  }
+}
 
 type FigmaSiteConfiguration = {
   title?: string
