@@ -7,7 +7,7 @@ import { useHistoryNavigation } from './hooks/useHistoryNavigation';
 import { getToken, setToken, clearToken } from './lib/apiClient';
 import { fetchCurrentUser, logout as apiLogout } from './lib/authApi';
 import { verifyVnpayReturn, readPendingOrder, clearPendingOrder, isMockPaymentMode, type VnpayReturnResult } from './lib/paymentApi';
-import { listEvents, createEvent as apiCreateEvent, type EventResponse, type EventFormData } from './api/events';
+import { listEvents, createEvent as apiCreateEvent, deleteEvent as apiDeleteEvent, type EventResponse, type EventFormData } from './api/events';
 import { listPhotosByEvent, deletePhoto as apiDeletePhoto, type PhotoResponse } from './api/photos';
 
 const FALLBACK_COVER_IMAGE = 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800&h=500&fit=crop&auto=format';
@@ -288,6 +288,16 @@ export default function App() {
     }
   };
 
+  const handleDeleteEvents = async (ids: string[]) => {
+    try {
+      await Promise.all(ids.map((id) => apiDeleteEvent(Number(id))));
+      setEvents((prev) => prev.filter((e) => !ids.includes(e.id)));
+      addToast('success', `Đã xóa ${ids.length} sự kiện.`);
+    } catch (err) {
+      addToast('error', err instanceof Error ? err.message : 'Xóa sự kiện thất bại.');
+    }
+  };
+
   const selectedEvent = selectedEventId ? events.find((e) => e.id === selectedEventId) : null;
 
   if (checkingSession) {
@@ -330,6 +340,7 @@ export default function App() {
                 searchQuery={searchQuery}
                 onOpenEvent={handleOpenEvent}
                 onCreateEvent={() => setShowCreateModal(true)}
+                onDeleteEvents={handleDeleteEvents}
               />
             )}
 

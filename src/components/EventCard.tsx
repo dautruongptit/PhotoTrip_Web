@@ -4,16 +4,20 @@ import { formatDateRange, formatTimeAgo } from '../utils';
 interface Props {
   event: TravelEvent;
   user: User | null;
+  selected?: boolean;
+  onSelect?: () => void;
   onClick: () => void;
 }
 
-export default function EventCard({ event, onClick }: Props) {
+export default function EventCard({ event, selected = false, onSelect, onClick }: Props) {
   const totalPhotos = event.photoCount ?? event.photos.length;
 
   return (
     <article
       onClick={onClick}
-      className="group bg-white dark:bg-gray-900 rounded-2xl overflow-hidden border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-xl hover:shadow-gray-200/60 hover:-translate-y-1 transition-all duration-300 cursor-pointer"
+      className={`group bg-white dark:bg-gray-900 rounded-2xl overflow-hidden border shadow-sm hover:shadow-xl hover:shadow-gray-200/60 hover:-translate-y-1 transition-all duration-300 cursor-pointer ${
+        selected ? 'border-blue-500 ring-2 ring-blue-500 ring-offset-2 dark:ring-offset-gray-950' : 'border-gray-100 dark:border-gray-800'
+      }`}
     >
       {/* Cover */}
       <div className="relative overflow-hidden bg-gray-100 dark:bg-gray-800" style={{ aspectRatio: '16/10' }}>
@@ -23,6 +27,26 @@ export default function EventCard({ event, onClick }: Props) {
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
+        {/* Select badge (top-left) */}
+        {onSelect && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onSelect(); }}
+            title={selected ? 'Bỏ chọn' : 'Chọn sự kiện'}
+            className={`absolute top-3 left-3 w-6 h-6 rounded-md flex items-center justify-center transition-all duration-200 shadow-sm ${
+              selected
+                ? 'bg-blue-600 opacity-100 scale-100'
+                : 'bg-white/85 backdrop-blur-sm opacity-0 scale-90 group-hover:opacity-100 group-hover:scale-100'
+            }`}
+          >
+            {selected ? (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                <path d="M5 13l4 4L19 7" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            ) : (
+              <div className="w-3.5 h-3.5 rounded-[3px] border-2 border-gray-400" />
+            )}
+          </button>
+        )}
         {/* Photo count badge */}
         <div className="absolute top-3 right-3 flex items-center gap-1.5 bg-black/50 backdrop-blur-sm text-white text-xs font-medium px-2.5 py-1 rounded-full">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
