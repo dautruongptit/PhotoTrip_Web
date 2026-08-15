@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import type { User } from '../types';
 import { formatTotalSize } from '../utils';
+import Avatar from './Avatar';
 
 interface Props {
   user: User | null;
@@ -109,10 +110,10 @@ export default function Header({
               onClick={() => setProfileOpen(!profileOpen)}
               className="flex items-center gap-2 pl-1 pr-3 py-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
             >
-              <img
+              <Avatar
                 src={user.avatar}
-                alt={user.name}
-                className="w-8 h-8 rounded-full object-cover ring-2 ring-gray-200 dark:ring-gray-700"
+                name={user.name}
+                className="w-8 h-8 rounded-full ring-2 ring-gray-200 dark:ring-gray-700"
               />
               <span className="text-sm font-medium text-gray-700 dark:text-gray-300 hidden md:block max-w-[120px] truncate">{user.name}</span>
               <svg className={`text-gray-500 dark:text-gray-400 transition-transform ${profileOpen ? 'rotate-180' : ''}`} width="14" height="14" viewBox="0 0 24 24" fill="none">
@@ -124,7 +125,7 @@ export default function Header({
               <div className="slide-up absolute right-0 top-full mt-2 w-72 bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-800 overflow-hidden z-50">
                 <div className="px-4 py-4 border-b border-gray-100 dark:border-gray-800">
                   <div className="flex items-center gap-3">
-                    <img src={user.avatar} alt={user.name} className="w-10 h-10 rounded-full object-cover" />
+                    <Avatar src={user.avatar} name={user.name} className="w-10 h-10 rounded-full" />
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{user.name}</p>
                       <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{user.email}</p>

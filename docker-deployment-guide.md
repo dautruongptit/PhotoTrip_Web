@@ -14,7 +14,7 @@ Internet ── Cloudflare ──▶  VPS
         ┌────────────────────┼─────────────────────┐
         ▼                    ▼                      ▼
    frontend (nginx:80)   backend (travelPhoto-API)   postgres:5432
-   port public: 8090      port public: 8068→8083      (không expose ra host)
+   port public: 8090      port public: 8085→8083      (không expose ra host)
 ```
 
 `backend` build từ repo `travelPhoto-API`, đã có Dockerfile chuẩn (multi-stage, non-root user, expose 8083). `frontend` build từ `PhotoTripManagement` (nginx, proxy `/api/` sang backend). Tất cả nằm chung 1 network Docker **external** tên `shared-network` (network bạn đã dùng sẵn cho `mysql-shared` và các project khác trên server) để bạn có thể quản lý FE/BE/DB bằng các `docker-compose.yml` tách riêng theo từng repo mà vẫn nói chuyện được với nhau qua tên service.
@@ -64,7 +64,7 @@ services:
       FLYWAY_BASELINE: "false"
       JWT_SECRET: "SuperLongSecretKeyHereAtLeast32CharactersMakeItRandom20262"
     ports:
-      - "${SERVER_PORT:-8068}:${SERVER_PORT:-8083}"
+      - "${SERVER_PORT:-8085}:${SERVER_PORT:-8083}"
     volumes:
       - ${STORAGE_ROOT_PATH:-/data/photo-storage}:/data/photo-storage
     networks:
@@ -79,7 +79,7 @@ networks:
 
 **Lỗi 2 — tên network không khớp**: service khai `networks: - shared-network` nhưng phần định nghĩa network ở cuối lại đặt tên là `shared` (`shared: external: true`). Compose sẽ báo lỗi vì `shared-network` chưa từng được định nghĩa. Phải dùng cùng một tên ở cả hai chỗ.
 
-**Lỗi 3 — cổng host và cổng container dùng chung 1 biến**: `"${SERVER_PORT:-8068}:${SERVER_PORT:-8083}"` — cả 2 phía đều đọc từ `SERVER_PORT`. Nếu bạn set `SERVER_PORT=8068` trong `.env`, mapping sẽ thành `"8068:8068"` (không phải `8068:8083`), trong khi container thực tế lắng nghe ở `8083` (theo `EXPOSE 8083`) → request vào container sẽ không tới được app, trừ khi bạn cũng set `server.port=${SERVER_PORT}` trong `application.yml`. Cách sửa an toàn nhất: tách 2 biến riêng, cổng container giữ cố định `8083` khớp với Dockerfile.
+**Lỗi 3 — cổng host và cổng container dùng chung 1 biến**: `"${SERVER_PORT:-8085}:${SERVER_PORT:-8083}"` — cả 2 phía đều đọc từ `SERVER_PORT`. Nếu bạn set `SERVER_PORT=8085` trong `.env`, mapping sẽ thành `"8085:8085"` (không phải `8085:8083`), trong khi container thực tế lắng nghe ở `8083` (theo `EXPOSE 8083`) → request vào container sẽ không tới được app, trừ khi bạn cũng set `server.port=${SERVER_PORT}` trong `application.yml`. Cách sửa an toàn nhất: tách 2 biến riêng, cổng container giữ cố định `8083` khớp với Dockerfile.
 
 **Vấn đề phụ**: `JWT_SECRET` bị hard-code ngay trong file (đã commit lên Git) — dù vẫn nhận qua `env_file`, dòng `environment:` này override và lộ secret thật lên GitHub công khai. Nên xoá dòng này, để `JWT_SECRET` chỉ nằm trong `.env` (không commit).
 
@@ -99,7 +99,7 @@ services:
       SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
       FLYWAY_BASELINE: "false"
     ports:
-      - "${SERVER_PORT_HOST:-8068}:8083"
+      - "${SERVER_PORT_HOST:-8085}:8083"
     volumes:
       - ${STORAGE_ROOT_PATH:-/data/photo-storage}:/data/photo-storage
     networks:
@@ -164,7 +164,7 @@ volumes:
 ```env
 SPRING_PROFILES_ACTIVE=prod
 SWAGGER_ENABLED=false
-SERVER_PORT_HOST=8068
+SERVER_PORT_HOST=8085
 
 # Postgres — backend kết nối qua tên service trong network "shared-network"
 DB_HOST=postgres
@@ -231,7 +231,7 @@ server {
 }
 ```
 
-Chú ý `proxy_pass` trỏ đúng cổng 8083 (container port thật của backend), không phải 8068 (cổng publish ra host).
+Chú ý `proxy_pass` trỏ đúng cổng 8083 (container port thật của backend), không phải 8085 (cổng publish ra host).
 
 `PhotoTripManagement/docker-compose.yml`:
 
@@ -442,7 +442,7 @@ app:
   cookie-secure: ${APP_COOKIE_SECURE:true}
 ```
 
-`app.cookie-secure` **phải là `false` ở dev** (`.env` dev: `APP_COOKIE_SECURE=false`) — cookie `Secure` chỉ được trình duyệt lưu qua HTTPS, mà dev bạn chạy `http://localhost:8068`, nếu để `true` cookie `refresh_token` sẽ **không bao giờ được lưu**, luồng refresh sẽ luôn lỗi ở dev dù code không sai.
+`app.cookie-secure` **phải là `false` ở dev** (`.env` dev: `APP_COOKIE_SECURE=false`) — cookie `Secure` chỉ được trình duyệt lưu qua HTTPS, mà dev bạn chạy `http://localhost:8085`, nếu để `true` cookie `refresh_token` sẽ **không bao giờ được lưu**, luồng refresh sẽ luôn lỗi ở dev dù code không sai.
 
 **Route FE cần thêm**: `/oauth2/callback` (React Router) — đọc query `token`, lưu vào state, gọi `/api/auth/me` lấy thông tin user, rồi điều hướng vào app:
 
@@ -472,7 +472,7 @@ export default function OAuth2Callback() {
 
 ### 12.4 ⚠️ Gotcha quan trọng nhất khi test ở DEV: cookie `SameSite=Strict`
 
-`OAuth2SuccessHandler`/`AuthController` set cookie với `.sameSite("Strict")`. Cookie `SameSite=Strict` **chỉ được trình duyệt gửi kèm khi request cùng site (cùng domain, kể cả khác port thì vẫn coi là khác origin nhưng cùng "site")** — thực ra `localhost:8443` (FE) gọi `localhost:8068` (BE) vẫn được coi khác **origin** nhưng theo định nghĩa "site" của trình duyệt (eTLD+1) thì `localhost` cùng site nên `SameSite=Strict` **vẫn chặn** vì đây là 2 port khác nhau bị xem là cross-site request về mặt cookie policy của một số trình duyệt hiện đại (Chrome coi `localhost` các port khác nhau vẫn là khác site cho mục đích cookie). Nói ngắn gọn: **`POST /api/auth/refresh` gọi trực tiếp từ `localhost:8443` sang `localhost:8068` rất dễ không nhận được cookie**, dù `CorsConfiguration` đã set `allowCredentials(true)` đúng.
+`OAuth2SuccessHandler`/`AuthController` set cookie với `.sameSite("Strict")`. Cookie `SameSite=Strict` **chỉ được trình duyệt gửi kèm khi request cùng site (cùng domain, kể cả khác port thì vẫn coi là khác origin nhưng cùng "site")** — thực ra `localhost:8443` (FE) gọi `localhost:8085` (BE) vẫn được coi khác **origin** nhưng theo định nghĩa "site" của trình duyệt (eTLD+1) thì `localhost` cùng site nên `SameSite=Strict` **vẫn chặn** vì đây là 2 port khác nhau bị xem là cross-site request về mặt cookie policy của một số trình duyệt hiện đại (Chrome coi `localhost` các port khác nhau vẫn là khác site cho mục đích cookie). Nói ngắn gọn: **`POST /api/auth/refresh` gọi trực tiếp từ `localhost:8443` sang `localhost:8085` rất dễ không nhận được cookie**, dù `CorsConfiguration` đã set `allowCredentials(true)` đúng.
 
 **Cách khắc phục chuẩn nhất — thêm Vite dev proxy** để FE dev server tự forward `/api`, `/oauth2`, `/login/oauth2` sang backend, biến mọi request thành "cùng origin" y hệt cách nginx làm ở production (đã cấu hình ở mục 6):
 
@@ -484,15 +484,15 @@ server: {
   port: parseInt(process.env.PORT || '8443'),
   strictPort: true,
   proxy: {
-    '/api': { target: 'http://localhost:8068', changeOrigin: true },
-    '/oauth2': { target: 'http://localhost:8068', changeOrigin: true },
-    '/login/oauth2': { target: 'http://localhost:8068', changeOrigin: true },
+    '/api': { target: 'http://localhost:8085', changeOrigin: true },
+    '/oauth2': { target: 'http://localhost:8085', changeOrigin: true },
+    '/login/oauth2': { target: 'http://localhost:8085', changeOrigin: true },
   },
   watch: { ignored: ['**/.figma/**'] },
 },
 ```
 
-Và đổi `VITE_API_BASE_URL` ở dev thành **đường dẫn tương đối**, không phải `http://localhost:8068`:
+Và đổi `VITE_API_BASE_URL` ở dev thành **đường dẫn tương đối**, không phải `http://localhost:8085`:
 
 ```env
 # .env.development
@@ -723,7 +723,7 @@ cd ~/apps/travel-album/travelPhoto-API
 cat > .env << 'EOF'
 SPRING_PROFILES_ACTIVE=prod
 SWAGGER_ENABLED=false
-SERVER_PORT_HOST=8068
+SERVER_PORT_HOST=8085
 
 DB_HOST=postgres
 DB_PORT=5432
@@ -773,7 +773,7 @@ docker compose logs -f frontend
 
 ```bash
 # backend còn sống, trả JSON thật không
-curl -i http://localhost:8068/api/actuator/health
+curl -i http://localhost:8085/api/actuator/health
 
 # frontend đã build đúng chưa
 curl -i http://localhost:8090/
@@ -821,7 +821,7 @@ Vì bạn đã có pipeline này chạy ổn cho `demo-cicd`, chỉ cần nhân 
 - [ ] `docker network ls` có `shared-network`
 - [ ] `.env` backend: `JWT_SECRET`, `DB_PASSWORD` đã đổi khỏi giá trị mẫu, `APP_FRONTEND_URL` = domain prod thật
 - [ ] Postgres chạy trước, Flyway migrate log không lỗi
-- [ ] `curl http://localhost:8068/api/actuator/health` trả OK
+- [ ] `curl http://localhost:8085/api/actuator/health` trả OK
 - [ ] `docker exec` từ frontend gọi được `backend:8083` qua tên service
 - [ ] Cloudflare Tunnel: Public Hostname `triptravel.thongtinchinhhieu.site` → `frontend:80`, `cloudflared` cùng `shared-network` với `frontend`
 - [ ] Google Console: redirect URI + JavaScript origin đã trỏ đúng domain prod (mục 11)
@@ -977,14 +977,14 @@ Debug FE trong VSCode: cài extension **Debugger for Chrome** (hoặc dùng sẵ
 
 Tắt dev: `Ctrl+C` ở terminal VSCode, Stop trong IntelliJ, `docker compose -f docker-compose.db.dev.yml down` (thêm `-v` nếu muốn xoá luôn data Postgres dev).
 
-### 14.6 Google Console — Client dev cập nhật lại theo port 8083 (không phải 8068)
+### 14.6 Google Console — Client dev cập nhật lại theo port 8083 (không phải 8085)
 
-Vì giờ dev chạy native (không qua Docker port-mapping `8068:8083` như production), backend dev lắng nghe thẳng ở **8083** (không phải 8068). Cập nhật lại Client dev ở mục 11.3:
+Vì giờ dev chạy native (không qua Docker port-mapping `8085:8083` như production), backend dev lắng nghe thẳng ở **8083** (không phải 8085). Cập nhật lại Client dev ở mục 11.3:
 
 - Authorized JavaScript origins: `http://localhost:8443`
 - Authorized redirect URIs: `http://localhost:8083/login/oauth2/code/google`
 
-(Cổng 8068 chỉ tồn tại ở **production**, do `docker-compose.yml` map `SERVER_PORT_HOST:-8068` ra ngoài host — dev không đi qua lớp map cổng này nên dùng thẳng 8083.)
+(Cổng 8085 chỉ tồn tại ở **production**, do `docker-compose.yml` map `SERVER_PORT_HOST:-8085` ra ngoài host — dev không đi qua lớp map cổng này nên dùng thẳng 8083.)
 
 ---
 
