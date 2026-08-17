@@ -1,5 +1,5 @@
 // src/api/client.ts
-import { getToken, setToken, clearToken } from "../lib/apiClient";
+import { getToken, setToken, clearToken, isGatewayErrorStatus, friendlyStatusMessage } from "../lib/apiClient";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL; // "/api" ở cả dev (nhờ Vite proxy) và prod (nhờ nginx)
 
@@ -32,11 +32,15 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   try {
     body = await res.json();
   } catch {
-    throw new Error(`Request failed with status ${res.status}`);
+    // Không phải JSON (vd public/error.html được trả về khi backend không tới được) ->
+    // chắc chắn là lỗi tầng hạ tầng, không phải response thật của backend.
+    throw new Error(friendlyStatusMessage(res.status));
   }
 
   if (!body.success) {
-    throw new Error(body.message ?? "Request failed");
+    // 502/503/504: ưu tiên thông báo dễ hiểu, bỏ qua message kỹ thuật (nếu có) từ
+    // tầng hạ tầng (nginx/proxy) — message đó không phải do backend soạn cho người dùng.
+    throw new Error(isGatewayErrorStatus(res.status) ? friendlyStatusMessage(res.status) : (body.message ?? "Request failed"));
   }
   return body.data as T;
 }

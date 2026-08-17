@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex, nofollow" />
+<title>Không thể kết nối máy chủ · Travel Photo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap');
+
+  :root {
+    --brand: #2563eb;
+    --brand-dark: #1d4ed8;
+    --ink: #0f172a;
+    --muted: #64748b;
+    --surface: #ffffff;
+    --bg-a: #eef3fc;
+    --bg-b: #f8fafc;
+    --ring: rgba(37, 99, 235, 0.14);
+    --border: rgba(15, 23, 42, 0.06);
+  }
+  html.dark {
+    --ink: #f1f5f9;
+    --muted: #94a3b8;
+    --surface: #111827;
+    --bg-a: #0b1220;
+    --bg-b: #0f172a;
+    --ring: rgba(37, 99, 235, 0.22);
+    --border: rgba(255, 255, 255, 0.06);
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    color: var(--ink);
+    background: radial-gradient(60% 50% at 50% 0%, var(--bg-a) 0%, var(--bg-b) 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    transition: background 0.2s ease, color 0.2s ease;
+  }
+
+  .card {
+    width: 100%;
+    max-width: 400px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 28px;
+    padding: 40px 32px 32px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 24px 48px -12px rgba(15, 23, 42, 0.18);
+    text-align: center;
+    animation: pop 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @keyframes pop {
+    from { opacity: 0; transform: translateY(10px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 28px;
+  }
+  .brand-mark {
+    width: 26px;
+    height: 26px;
+    border-radius: 9px;
+    background: var(--brand);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .brand-name {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+  }
+
+  .icon-wrap {
+    position: relative;
+    width: 84px;
+    height: 84px;
+    margin: 0 auto 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .icon-ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: var(--ring);
+    animation: breathe 2.4s ease-in-out infinite;
+  }
+  .icon-ring.delay {
+    animation-delay: 0.6s;
+  }
+  @keyframes breathe {
+    0%   { transform: scale(0.72); opacity: 0.55; }
+    70%  { transform: scale(1.08); opacity: 0; }
+    100% { transform: scale(1.08); opacity: 0; }
+  }
+  .compass {
+    position: relative;
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .compass svg {
+    animation: seek 3.2s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+    transform-origin: 50% 50%;
+  }
+  @keyframes seek {
+    0%   { transform: rotate(-18deg); }
+    50%  { transform: rotate(24deg); }
+    100% { transform: rotate(-18deg); }
+  }
+
+  .eyebrow {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--brand);
+    background: var(--ring);
+    padding: 5px 12px;
+    border-radius: 99px;
+    margin-bottom: 14px;
+  }
+
+  h1 {
+    font-size: 21px;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    line-height: 1.35;
+    margin: 0 0 10px;
+  }
+
+  p.desc {
+    font-size: 14.5px;
+    line-height: 1.6;
+    color: var(--muted);
+    margin: 0 0 28px;
+  }
+
+  .retry-btn {
+    width: 100%;
+    height: 48px;
+    border: none;
+    border-radius: 14px;
+    background: var(--brand);
+    color: #fff;
+    font-size: 14.5px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: background 0.15s ease, transform 0.1s ease;
+  }
+  .retry-btn:hover { background: var(--brand-dark); }
+  .retry-btn:active { transform: scale(0.98); }
+  .retry-btn:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+  .retry-btn svg {
+    transition: transform 0.4s ease;
+  }
+  .retry-btn.loading svg {
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .auto-retry {
+    margin-top: 16px;
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+  .auto-retry b {
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .card, .icon-ring, .compass svg, .retry-btn svg { animation: none !important; }
+  }
+</style>
+</head>
+<body>
+  <main class="card" role="alert" aria-live="polite">
+    <div class="brand">
+      <span class="brand-mark">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+          <path d="M12 2L2 7l10 5 10-5-10-5z" fill="white"/>
+          <path d="M2 17l10 5 10-5M2 12l10 5 10-5" stroke="white" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </span>
+      <span class="brand-name">Travel Photo</span>
+    </div>
+
+    <div class="icon-wrap">
+      <span class="icon-ring"></span>
+      <span class="icon-ring delay"></span>
+      <span class="compass">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="9" stroke="#2563EB" stroke-width="1.6"/>
+          <path d="M15.5 8.5L13 13l-4.5 2.5L11 11l4.5-2.5z" fill="#2563EB"/>
+        </svg>
+      </span>
+    </div>
+
+    <span class="eyebrow">Mất kết nối</span>
+    <h1>Không thể kết nối đến máy chủ</h1>
+    <p class="desc">
+      Hệ thống đang tạm gián đoạn hoặc đang khởi động lại.
+      Ảnh và album của bạn vẫn an toàn — vui lòng thử lại sau ít phút.
+    </p>
+
+    <button class="retry-btn" id="retryBtn" type="button">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+        <path d="M20 12a8 8 0 1 1-2.34-5.66" stroke="white" stroke-width="2" stroke-linecap="round"/>
+        <path d="M20 4v6h-6" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span id="retryLabel">Thử lại ngay</span>
+    </button>
+
+    <p class="auto-retry">Tự động thử lại sau <b id="countdown">15</b>s…</p>
+  </main>
+
+  <script>
+    // Đồng bộ theme sáng/tối với lựa chọn đã lưu của app (App.tsx dùng chung key
+    // này qua hook useTheme), tránh trang lỗi bị "nháy" sai theme khi user đang ở
+    // dark mode. Trang này KHÔNG phụ thuộc bundle React/JS của app (có thể hỏng
+    // cùng lúc backend down), nên đọc thẳng localStorage bằng vanilla JS.
+    (function () {
+      try {
+        var stored = localStorage.getItem('phototrip-theme');
+        var dark = stored ? stored === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+        if (dark) document.documentElement.classList.add('dark');
+      } catch (e) {}
+    })();
+
+    // Nút "Thử lại" và đếm ngược tự động: đơn giản là reload lại đúng URL đang
+    // đứng (nginx trả trang này thay cho 502/503/504 nhưng địa chỉ trên thanh URL
+    // vẫn là request gốc), nên reload sẽ tự thử lại đúng request đã lỗi.
+    var btn = document.getElementById('retryBtn');
+    var label = document.getElementById('retryLabel');
+    var countdownEl = document.getElementById('countdown');
+
+    function retry() {
+      btn.classList.add('loading');
+      label.textContent = 'Đang thử lại…';
+      window.location.reload();
+    }
+
+    btn.addEventListener('click', retry);
+
+    var secondsLeft = 15;
+    countdownEl.textContent = String(secondsLeft);
+    var timer = setInterval(function () {
+      secondsLeft -= 1;
+      if (secondsLeft <= 0) {
+        clearInterval(timer);
+        retry();
+        return;
+      }
+      countdownEl.textContent = String(secondsLeft);
+    }, 1000);
+  </script>
+</body>
+</html>

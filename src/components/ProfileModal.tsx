@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { TravelEvent, User } from '../types';
 import { formatTotalSize } from '../utils';
+import Avatar from './Avatar';
 
 interface Props {
   user: User;
@@ -37,7 +38,7 @@ export default function ProfileModal({ user, events, usedBytes, limitBytes, onCl
         <div className="flex-1 overflow-y-auto px-6 py-5">
           {/* Avatar + name */}
           <div className="flex flex-col items-center text-center">
-            <img src={user.avatar} alt={user.name} className="w-20 h-20 rounded-full object-cover ring-4 ring-gray-100 dark:ring-gray-800" />
+            <Avatar src={user.avatar} name={user.name} className="w-20 h-20 rounded-full ring-4 ring-gray-100 dark:ring-gray-800" />
 
             {editing ? (
               <div className="mt-3 w-full">

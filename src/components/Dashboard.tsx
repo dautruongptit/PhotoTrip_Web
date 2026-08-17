@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { TravelEvent, User } from '../types';
 import { formatTotalSize } from '../utils';
 import EventCard from './EventCard';
@@ -8,6 +9,7 @@ interface Props {
   searchQuery: string;
   onOpenEvent: (id: string) => void;
   onCreateEvent: () => void;
+  onDeleteEvents: (ids: string[]) => void;
 }
 
 const EmptyEvents = ({ onCreateEvent }: { onCreateEvent: () => void }) => (
@@ -37,7 +39,10 @@ const EmptyEvents = ({ onCreateEvent }: { onCreateEvent: () => void }) => (
   </div>
 );
 
-export default function Dashboard({ user, events, searchQuery, onOpenEvent, onCreateEvent }: Props) {
+export default function Dashboard({ user, events, searchQuery, onOpenEvent, onCreateEvent, onDeleteEvents }: Props) {
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
   const totalPhotos = events.reduce((s, e) => s + (e.photoCount ?? e.photos.length), 0);
   const totalSize   = events.reduce((s, e) => s + (e.totalSizeBytes ?? e.photos.reduce((ps, p) => ps + p.size, 0)), 0);
   // Ảnh gần đây chỉ lấy được từ các event đã mở AlbumPage ít nhất 1 lần trong
@@ -46,7 +51,13 @@ export default function Dashboard({ user, events, searchQuery, onOpenEvent, onCr
   const recentPhotos = [...allPhotos].sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()).slice(0, 6);
 
   const filtered = searchQuery
-    ? events.filter((e) => e.name.toLowerCase().includes(searchQuery.toLowerCase()) || e.location.toLowerCase().includes(searchQuery.toLowerCase()))
+    ? events.filter((e) => {
+        const q = searchQuery.toLowerCase();
+        // e.location có thể là null với các event tạo trước migration V9 (cột
+        // location được thêm sau, không backfill dữ liệu cũ) — dù type khai
+        // báo là string. Guard bằng '' để tránh crash trắng trang khi gõ tìm kiếm.
+        return e.name.toLowerCase().includes(q) || (e.location ?? '').toLowerCase().includes(q);
+      })
     : events;
 
   const greeting = () => {
@@ -54,6 +65,23 @@ export default function Dashboard({ user, events, searchQuery, onOpenEvent, onCr
     if (h < 12) return 'Chào buổi sáng';
     if (h < 18) return 'Chào buổi chiều';
     return 'Chào buổi tối';
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => setSelected(new Set(filtered.map((e) => e.id)));
+  const clearSelect = () => setSelected(new Set());
+
+  const handleDelete = () => {
+    onDeleteEvents(Array.from(selected));
+    clearSelect();
+    setShowDeleteConfirm(false);
   };
 
   return (
@@ -149,12 +177,64 @@ export default function Dashboard({ user, events, searchQuery, onOpenEvent, onCr
                 key={event.id}
                 event={event}
                 user={null}
+                selected={selected.has(event.id)}
+                onSelect={() => toggleSelect(event.id)}
                 onClick={() => onOpenEvent(event.id)}
               />
             ))}
           </div>
         )}
       </section>
+
+      {/* Floating selection toolbar */}
+      {selected.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 bg-gray-900 dark:bg-gray-800 text-white pl-4 pr-2 py-2 rounded-2xl shadow-2xl slide-up">
+          <span className="text-sm font-medium pr-3">
+            <strong>{selected.size}</strong> sự kiện đã chọn
+          </span>
+          <div className="w-px h-5 bg-white/15" />
+          <button
+            onClick={selected.size === filtered.length ? clearSelect : selectAll}
+            className="px-3 py-1.5 text-sm text-white/80 hover:text-white hover:bg-white/10 rounded-xl transition-colors"
+          >
+            {selected.size === filtered.length ? 'Bỏ chọn' : `Chọn tất cả (${filtered.length})`}
+          </button>
+          <button
+            onClick={() => setShowDeleteConfirm(true)}
+            className="px-3 py-1.5 text-sm text-red-400 hover:text-red-300 hover:bg-white/10 rounded-xl transition-colors"
+          >
+            Xóa
+          </button>
+          <button
+            onClick={clearSelect}
+            title="Đóng"
+            className="w-8 h-8 flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 rounded-xl transition-colors ml-1 flex-shrink-0"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
+      {/* Delete confirmation */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowDeleteConfirm(false)} />
+          <div className="slide-up relative bg-white dark:bg-gray-900 rounded-2xl shadow-2xl p-6 max-w-sm w-full">
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Xác nhận xóa</h3>
+            <p className="text-gray-600 dark:text-gray-300 text-sm mb-5">
+              Bạn có chắc muốn xóa <strong>{selected.size} sự kiện</strong> đã chọn? Toàn bộ ảnh bên trong cũng sẽ bị xóa. Hành động này không thể hoàn tác.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setShowDeleteConfirm(false)} className="flex-1 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                Hủy
+              </button>
+              <button onClick={handleDelete} className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-sm font-semibold text-white transition-colors">
+                Xóa {selected.size} sự kiện
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
