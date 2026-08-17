@@ -5,7 +5,9 @@ import type { PhotoResponse } from "./photos";
 
 export interface ShareLinkResponse {
   token: string;
-  url: string;
+  shareUrl: string;
+  active: boolean;
+  role: string;
 }
 
 interface Page<T> {
@@ -16,8 +18,8 @@ interface Page<T> {
   size: number;
 }
 
-export const createShareLink = (eventId: number) =>
-  apiPost<ShareLinkResponse>(`/events/${eventId}/share`);
+export const createShareLink = (eventId: number, role?: string) =>
+  apiPost<ShareLinkResponse>(`/events/${eventId}/share${role ? `?role=${role}` : ""}`);
 
 /** Public — không cần đăng nhập */
 export const getSharedEvent = (token: string) =>

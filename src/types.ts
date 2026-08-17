@@ -31,6 +31,7 @@ export interface TravelEvent {
   photoCount?: number;
   totalSizeBytes?: number;
   createdBy: string;
+  ownerId: string;
   createdAt: string;
 }
 

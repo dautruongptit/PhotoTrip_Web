@@ -2,6 +2,7 @@ import { useState, useMemo, useRef } from 'react';
 import type { TravelEvent, User, Photo, SortOption } from '../types';
 import { formatFileSize, formatDate, formatDateRange } from '../utils';
 import Lightbox from './Lightbox';
+import ShareModal from './ShareModal';
 
 interface Props {
   event: TravelEvent;
@@ -10,6 +11,7 @@ interface Props {
   onBack: () => void;
   onUpload: () => void;
   onDeletePhotos: (ids: string[]) => void;
+  onToast: (type: 'success' | 'error' | 'warning' | 'info', msg: string) => void;
 }
 
 const SORT_LABELS: Record<SortOption, string> = {
@@ -19,12 +21,13 @@ const SORT_LABELS: Record<SortOption, string> = {
   'name-za': 'Tên Z–A',
 };
 
-export default function AlbumPage({ event, user, searchQuery, onBack, onUpload, onDeletePhotos }: Props) {
+export default function AlbumPage({ event, user, searchQuery, onBack, onUpload, onDeletePhotos, onToast }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sort, setSort] = useState<SortOption>('newest');
   const [filterQuery, setFilterQuery] = useState('');
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const sortRef = useRef<HTMLDivElement>(null);
 
@@ -119,13 +122,27 @@ export default function AlbumPage({ event, user, searchQuery, onBack, onUpload, 
                 </span>
               </div>
             </div>
+            {user && String(event.ownerId) === String(user.id) && (
+              <button
+                onClick={() => setShowShareModal(true)}
+                className="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 font-semibold px-4 py-2.5 rounded-xl transition-all text-sm shadow-sm flex-shrink-0"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                  <circle cx="18" cy="5" r="3" stroke="currentColor" strokeWidth="2"/>
+                  <circle cx="6" cy="12" r="3" stroke="currentColor" strokeWidth="2"/>
+                  <circle cx="18" cy="19" r="3" stroke="currentColor" strokeWidth="2"/>
+                  <path d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                </svg>
+                <span>Chia sẻ</span>
+              </button>
+            )}
             {user && (
               <button
                 onClick={onUpload}
                 className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2.5 rounded-xl transition-all text-sm shadow-sm hover:shadow-lg hover:shadow-blue-200 flex-shrink-0"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" stroke="white" strokeWidth="2" strokeLinecap="round"/>
                   <polyline points="17 8 12 3 7 8" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   <line x1="12" y1="3" x2="12" y2="15" stroke="white" strokeWidth="2" strokeLinecap="round"/>
                 </svg>
@@ -309,6 +326,14 @@ export default function AlbumPage({ event, user, searchQuery, onBack, onUpload, 
             </div>
           </div>
         </div>
+      )}
+
+      {showShareModal && (
+        <ShareModal
+          event={event}
+          onClose={() => setShowShareModal(false)}
+          onToast={onToast}
+        />
       )}
     </main>
   );

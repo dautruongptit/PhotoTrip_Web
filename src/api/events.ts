@@ -6,6 +6,7 @@ export interface EventResponse {
   name: string;
   description: string;
   ownerName: string;
+  ownerId: number;
   startDate: string; // yyyy-MM-dd
   endDate: string;
   location: string;

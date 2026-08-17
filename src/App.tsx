@@ -25,6 +25,7 @@ function mapEventResponse(dto: EventResponse, photos: Photo[] = []): TravelEvent
     photoCount: dto.photoCount,
     totalSizeBytes: dto.totalSize,
     createdBy: dto.ownerName,
+    ownerId: String(dto.ownerId),
     createdAt: dto.createdAt,
   };
 }
@@ -349,6 +350,7 @@ export default function App() {
                   setShowUploadModal(true);
                 }}
                 onDeletePhotos={handleDeletePhotos}
+                onToast={addToast}
               />
             )}
 
