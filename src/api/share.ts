@@ -12,14 +12,9 @@ export type EventMemberRole = "VIEWER" | "EDITOR";
 export interface ShareLinkResponse {
   token: string;
   shareUrl: string;
-<<<<<<< HEAD
-  active: boolean;
-  role: string;
-=======
   expiredAt: string; // ISO datetime
   active: boolean;
   role: EventMemberRole;
->>>>>>> 26ccba94de27b1c1dd90069fb3f9590b8510c240
 }
 
 interface Page<T> {
@@ -30,12 +25,8 @@ interface Page<T> {
   size: number;
 }
 
-<<<<<<< HEAD
-export const createShareLink = (eventId: number, role?: string) =>
-=======
 /** role mặc định VIEWER nếu không truyền — khớp backend (query param "role" optional). */
 export const createShareLink = (eventId: number, role?: EventMemberRole) =>
->>>>>>> 26ccba94de27b1c1dd90069fb3f9590b8510c240
   apiPost<ShareLinkResponse>(`/events/${eventId}/share${role ? `?role=${role}` : ""}`);
 
 /** Public — không cần đăng nhập */
